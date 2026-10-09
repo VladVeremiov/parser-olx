@@ -19,6 +19,8 @@ COOKIES_BUTTON = "[data-cy='dismiss-cookies-overlay']"
 PHONE_BUTTON_NAME = re.compile(r"Показати телефон", re.I)
 # Текст кнопки с номером: только цифры, пробелы, скобки, дефисы (без переводов строки)
 PHONE_TEXT = re.compile(r"^\+?[\d ()\-]{9,}$")
+# Сообщение антифрода OLX: «...виявили підозрілу активність»
+BLOCK_MESSAGE = re.compile(r"підозр\w*\s+активн", re.I)
 
 
 @dataclass
@@ -29,16 +31,24 @@ class AdData:
     url: str
     author_name: Optional[str]
     phone: Optional[str]
-    phone_status: str  # ok / no_button / disallowed / not_found
+    # ok / no_button / disallowed / blocked / not_found
+    phone_status: str
 
 
 def normalize_phone(raw: str) -> str:
-    """'634 352 502' -> '+380634352502', '+38 067 6024805' -> '+380676024805'."""
+    """Приводит номер к виду +380XXXXXXXXX.
+
+    '+38 067 6024805'  -> '+380676024805'
+    '634 352 502'      -> '+380634352502'
+    '380 050 5542835'  -> '+380505542835'  (код страны плюс лишний ноль)
+    """
     digits = re.sub(r"\D", "", raw)
-    if len(digits) == 9:
-        digits = "380" + digits
+    if digits.startswith("3800") and len(digits) == 13:
+        digits = "380" + digits[4:]
     elif len(digits) == 10 and digits.startswith("0"):
         digits = "38" + digits
+    elif len(digits) == 9:
+        digits = "380" + digits
     return "+" + digits
 
 
@@ -47,6 +57,8 @@ class AdPage:
 
     def __init__(self, page: Page):
         self.page = page
+        # После первой блокировки антифродом кнопку телефона больше не нажимаем
+        self.phone_blocked = False
 
     def open(self, url: str) -> None:
         self.page.goto(url, wait_until="domcontentloaded", timeout=config.PAGE_TIMEOUT_MS)
@@ -82,6 +94,27 @@ class AdPage:
         match = re.search(r"ID:\s*(\d+)", self._text(FOOTER) or "")
         return int(match.group(1)) if match else None
 
+    def _button_texts(self) -> list[str]:
+        """Тексты всех кнопок на странице (неразрывные пробелы заменены обычными)."""
+        raw = self.page.get_by_role("button").all_inner_texts()
+        return [t.replace("\xa0", " ").strip() for t in raw]
+
+    @staticmethod
+    def _find_phone(texts: list[str]) -> Optional[str]:
+        """Ищет среди текстов кнопок тот, где написан номер."""
+        for text in texts:
+            digits = re.sub(r"\D", "", text)
+            if PHONE_TEXT.match(text) and 9 <= len(digits) <= 13:
+                return text
+        return None
+
+    def _block_line(self) -> Optional[str]:
+        """Возвращает строку с сообщением антифрода, если она есть на странице."""
+        for line in self.page.inner_text("body").split("\n"):
+            if BLOCK_MESSAGE.search(line):
+                return line.strip()
+        return None
+
     def get_phone(self) -> tuple[Optional[str], str]:
         """Возвращает (номер или None, статус)."""
         button = self.page.get_by_role("button", name=PHONE_BUTTON_NAME)
@@ -90,18 +123,30 @@ class AdPage:
         except PlaywrightTimeout:
             return None, "no_button"
 
+        if self.phone_blocked:
+            return None, "blocked"  # антифрод уже сработал: не нажимаем, не провоцируем
+
         button.first.click()
-        self.page.wait_for_timeout(2500)
 
-        if "Disallowed" in self.page.inner_text("body"):
-            return None, "disallowed"
+        # номер может появиться не сразу: проверяем до трёх раз
+        texts: list[str] = []
+        for _ in range(3):
+            self.page.wait_for_timeout(1500)
+            if "Disallowed" in self.page.inner_text("body"):
+                return None, "disallowed"
+            block = self._block_line()
+            if block:
+                self.phone_blocked = True
+                log.warning("OLX заблокировал показ номеров: %r. "
+                            "Дальше кнопку не нажимаю.", block)
+                return None, "blocked"
+            texts = self._button_texts()
+            found = self._find_phone(texts)
+            if found:
+                return normalize_phone(found), "ok"
 
-        # после клика номер появляется в тексте кнопки
-        for text in self.page.get_by_role("button").all_inner_texts():
-            text = text.strip()
-            digits = re.sub(r"\D", "", text)
-            if PHONE_TEXT.match(text) and 9 <= len(digits) <= 12:
-                return normalize_phone(text), "ok"
+        # номер так и не появился: пишем в лог, что было на кнопках (для разбора)
+        log.warning("Номер не найден. Кнопки на странице: %r", texts[:15])
         return None, "not_found"
 
     def collect(self, url: str) -> AdData:
