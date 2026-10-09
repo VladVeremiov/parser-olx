@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
 from src import config
 
@@ -17,7 +17,8 @@ FOOTER = "[data-cy='ad-footer-bar-section']"
 COOKIES_BUTTON = "[data-cy='dismiss-cookies-overlay']"
 
 PHONE_BUTTON_NAME = re.compile(r"Показати телефон", re.I)
-PHONE_PATTERN = re.compile(r"(?:\+?38)?[\s\-]?\(?0\d{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}")
+# Текст кнопки с номером: только цифры, пробелы, скобки, дефисы (без переводов строки)
+PHONE_TEXT = re.compile(r"^\+?[\d ()\-]{9,}$")
 
 
 @dataclass
@@ -32,9 +33,11 @@ class AdData:
 
 
 def normalize_phone(raw: str) -> str:
-    """'+38 067 6024805' -> '+380676024805'."""
+    """'634 352 502' -> '+380634352502', '+38 067 6024805' -> '+380676024805'."""
     digits = re.sub(r"\D", "", raw)
-    if digits.startswith("0"):
+    if len(digits) == 9:
+        digits = "380" + digits
+    elif len(digits) == 10 and digits.startswith("0"):
         digits = "38" + digits
     return "+" + digits
 
@@ -82,21 +85,23 @@ class AdPage:
     def get_phone(self) -> tuple[Optional[str], str]:
         """Возвращает (номер или None, статус)."""
         button = self.page.get_by_role("button", name=PHONE_BUTTON_NAME)
-        if not button.count():
+        try:
+            button.first.wait_for(timeout=4000)  # даём кнопке время появиться
+        except PlaywrightTimeout:
             return None, "no_button"
 
-        before = set(PHONE_PATTERN.findall(self.page.inner_text("body")))
         button.first.click()
         self.page.wait_for_timeout(2500)
 
-        body = self.page.inner_text("body")
-        if "Disallowed" in body:
+        if "Disallowed" in self.page.inner_text("body"):
             return None, "disallowed"
 
-        # берём только те номера, которых до клика на странице не было
-        new_numbers = [n for n in PHONE_PATTERN.findall(body) if n not in before]
-        if new_numbers:
-            return normalize_phone(new_numbers[0]), "ok"
+        # после клика номер появляется в тексте кнопки
+        for text in self.page.get_by_role("button").all_inner_texts():
+            text = text.strip()
+            digits = re.sub(r"\D", "", text)
+            if PHONE_TEXT.match(text) and 9 <= len(digits) <= 12:
+                return normalize_phone(text), "ok"
         return None, "not_found"
 
     def collect(self, url: str) -> AdData:

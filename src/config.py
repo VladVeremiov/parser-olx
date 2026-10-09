@@ -5,3 +5,5 @@ CATEGORY_URL = "https://www.olx.ua/uk/detskiy-mir/detskaya-odezhda/"
 TARGET_ADS = 500              # сколько уникальных объявлений нужно собрать
 MAX_PAGES = 25                # предохранитель: дальше этой страницы не идём
 DELAY_RANGE_S = (2.0, 4.0)    # случайная пауза между страницами, секунды
+MAX_RETRIES = 3                # сколько раз пробуем одно объявление
+MAX_CONSECUTIVE_FAILURES = 5   # столько сбоев подряд, и сбор останавливается

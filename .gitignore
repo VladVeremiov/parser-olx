@@ -7,3 +7,4 @@ smoke*.py
 data/olx_session.json
 data/browser_profile/
 data/chrome_profile/
+logs/

@@ -46,10 +46,10 @@ def save_ad(ad_id, title, description, url, author_name, phone) -> None:
         )
 
 
-def ad_exists(ad_id) -> bool:
-    """Проверяет, есть ли объявление в базе (нужно, чтобы не собирать повторно)."""
+def url_exists(url: str) -> bool:
+    """Есть ли объявление с таким адресом в базе (чтобы не собирать повторно)."""
     with get_connection() as conn:
-        row = conn.execute("SELECT 1 FROM ads WHERE id = ?", (ad_id,)).fetchone()
+        row = conn.execute("SELECT 1 FROM ads WHERE url = ?", (url,)).fetchone()
     return row is not None
 
 
@@ -58,7 +58,16 @@ def count_ads() -> int:
         return conn.execute("SELECT COUNT(*) FROM ads").fetchone()[0]
 
 
+def sample_rows(limit: int = 3) -> list[tuple]:
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT id, title, author_name, phone FROM ads LIMIT ?", (limit,)
+        ).fetchall()
+
+
 if __name__ == "__main__":
     init_db()
-    print("База готова:", DB_PATH)
+    print("База:", DB_PATH)
     print("Строк в таблице:", count_ads())
+    for row in sample_rows():
+        print(row)
