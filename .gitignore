@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 data/*.db
 smoke*.py
+data/olx_session.json
+data/browser_profile/
+data/chrome_profile/
