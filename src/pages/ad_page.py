@@ -59,6 +59,7 @@ class AdPage:
         self.page = page
         # После первой блокировки антифродом кнопку телефона больше не нажимаем
         self.phone_blocked = False
+        self.not_found_streak = 0
 
     def open(self, url: str) -> None:
         self.page.goto(url, wait_until="domcontentloaded", timeout=config.PAGE_TIMEOUT_MS)
@@ -143,10 +144,16 @@ class AdPage:
             texts = self._button_texts()
             found = self._find_phone(texts)
             if found:
+                self.not_found_streak = 0
                 return normalize_phone(found), "ok"
 
         # номер так и не появился: пишем в лог, что было на кнопках (для разбора)
         log.warning("Номер не найден. Кнопки на странице: %r", texts[:15])
+        self.not_found_streak += 1
+        if self.not_found_streak >= config.SOFT_BLOCK_STREAK:
+            self.phone_blocked = True
+            log.warning("Номер не показался %s раза подряд: похоже на тихое "
+                        "ограничение OLX. Дальше кнопку не нажимаю.", self.not_found_streak)
         return None, "not_found"
 
     def collect(self, url: str) -> AdData:
