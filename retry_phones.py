@@ -18,7 +18,7 @@ RETRY_STATUSES = {"not_found", "blocked", "disallowed"}
 
 
 def last_statuses() -> dict[int, str]:
-    """Последний статус телефона для каждого ID из лога основного сбора."""
+    """Останній статус телефону для кожного ID з лога основного збору."""
     statuses: dict[int, str] = {}
     for ad_id, status in STATUS_LINE.findall(LOG_FILE.read_text(encoding="utf-8")):
         statuses[int(ad_id)] = status
@@ -26,7 +26,7 @@ def last_statuses() -> dict[int, str]:
 
 
 def candidates() -> list[tuple[int, str]]:
-    """Объявления, где кнопка была, номер не получен, и в базе телефон пуст."""
+    """Оголошення, де кнопка була, номер не отримано, і в базі телефон порожній."""
     statuses = last_statuses()
     with db.get_connection() as conn:
         rows = conn.execute("SELECT id, url FROM ads WHERE phone IS NULL").fetchall()
@@ -58,7 +58,7 @@ def main() -> None:
                     continue
 
                 if status != "no_button":
-                    clicks += 1  # кнопка была нажата
+                    clicks += 1
                 if status == "ok":
                     with db.get_connection() as conn:
                         conn.execute("UPDATE ads SET phone = ? WHERE id = ?", (phone, ad_id))

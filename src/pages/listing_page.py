@@ -13,7 +13,7 @@ AD_PATH = "/d/uk/obyavlenie/"
 
 
 class ListingPage:
-    """Страница списка объявлений категории: умеет открыть N-ю страницу и отдать ссылки."""
+    """Сторінка списку об'яв категорії: вміє відкрити N-ту сторінку і віддати посилання."""
 
     def __init__(self, page: Page):
         self.page = page
@@ -25,7 +25,7 @@ class ListingPage:
         return f"{config.CATEGORY_URL}?page={page_number}"
 
     def open(self, page_number: int) -> None:
-        """Открывает страницу списка с номером page_number."""
+        """Відкриває сторінку списку з номером page_number."""
         self.page.goto(
             self.url_for(page_number),
             wait_until="domcontentloaded",
@@ -39,7 +39,7 @@ class ListingPage:
         self.load_all_cards()
 
     def load_all_cards(self) -> None:
-        """Прокручивает страницу вниз, чтобы подгрузились все карточки (lazy loading)."""
+        """Прокручує сторінку вниз, щоб підвантажити всі картки (lazy loading)."""
         stable_rounds = 0
         previous = -1
         for _ in range(25):
@@ -48,12 +48,12 @@ class ListingPage:
             count = self.page.locator(CARD).count()
             stable_rounds = stable_rounds + 1 if count == previous else 0
             previous = count
-            if stable_rounds >= 3:  # число карточек не растёт: всё загрузилось
+            if stable_rounds >= 3:  # кількість карток не зростає: все завантажилося
                 break
         log.info("Карточек на странице после прокрутки: %s", previous)
 
     def get_links(self) -> list[str]:
-        """Уникальные ссылки на объявления без хвоста ?search_reason=..., порядок сохраняется."""
+        """Унікальні посилання на оголошення без хвоста ?search_reason=..., порядок зберігається."""
         hrefs = self.page.locator(CARD_LINK).evaluate_all("els => els.map(e => e.href)")
         links = [h.split("?")[0] for h in hrefs if AD_PATH in h]
         return list(dict.fromkeys(links))

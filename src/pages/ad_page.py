@@ -9,7 +9,7 @@ from src import config
 
 log = logging.getLogger(__name__)
 
-# Все селекторы в одном месте: если OLX поменяет вёрстку, править только здесь
+# Селектори
 TITLE = "[data-cy='offer_title']"
 DESCRIPTION = "[data-cy='ad_description']"
 AUTHOR = "[data-cy='seller_card'] h4"
@@ -17,9 +17,9 @@ FOOTER = "[data-cy='ad-footer-bar-section']"
 COOKIES_BUTTON = "[data-cy='dismiss-cookies-overlay']"
 
 PHONE_BUTTON_NAME = re.compile(r"Показати телефон", re.I)
-# Текст кнопки с номером: только цифры, пробелы, скобки, дефисы (без переводов строки)
+
 PHONE_TEXT = re.compile(r"^\+?[\d ()\-]{9,}$")
-# Сообщение антифрода OLX: «...виявили підозрілу активність»
+
 BLOCK_MESSAGE = re.compile(r"підозр\w*\s+активн", re.I)
 
 
@@ -36,11 +36,11 @@ class AdData:
 
 
 def normalize_phone(raw: str) -> str:
-    """Приводит номер к виду +380XXXXXXXXX.
+    """Привід номера до виду +380XXXXXXXXX.
 
     '+38 067 6024805'  -> '+380676024805'
     '634 352 502'      -> '+380634352502'
-    '380 050 5542835'  -> '+380505542835'  (код страны плюс лишний ноль)
+    '380 050 5542835'  -> '+380505542835'  (код країни плюс зайвий нуль)
     """
     digits = re.sub(r"\D", "", raw)
     if digits.startswith("3800") and len(digits) == 13:
@@ -53,17 +53,17 @@ def normalize_phone(raw: str) -> str:
 
 
 class AdPage:
-    """Страница одного объявления: знает, где что лежит, и умеет это забрать."""
+    "Сторінка одного оголошення: знає, де що лежить, і вміє це забрати."
 
     def __init__(self, page: Page):
         self.page = page
-        # После первой блокировки антифродом кнопку телефона больше не нажимаем
+        # Після першого блокування антифродом кнопку телефону більше не натискаємо
         self.phone_blocked = False
         self.not_found_streak = 0
 
     def open(self, url: str) -> None:
         self.page.goto(url, wait_until="domcontentloaded", timeout=config.PAGE_TIMEOUT_MS)
-        # ждём заголовок: если его нет, объявление снято или нас не пустили
+        # чекаємо заголовок: якщо його немає, оголошення знято або не пустило
         self.page.wait_for_selector(TITLE, timeout=20_000)
         self.page.wait_for_timeout(1500)
         cookies = self.page.locator(COOKIES_BUTTON)
@@ -87,7 +87,7 @@ class AdPage:
         if not text:
             return None
         lines = text.split("\n")
-        if lines[0].strip() == "Опис":  # убираем служебный заголовок блока
+        if lines[0].strip() == "Опис":
             lines = lines[1:]
         return "\n".join(lines).strip() or None
 
@@ -96,13 +96,13 @@ class AdPage:
         return int(match.group(1)) if match else None
 
     def _button_texts(self) -> list[str]:
-        """Тексты всех кнопок на странице (неразрывные пробелы заменены обычными)."""
+        """Тексти всіх кнопок на сторінці (нерозривні пробіли замінені звичайними)."""
         raw = self.page.get_by_role("button").all_inner_texts()
         return [t.replace("\xa0", " ").strip() for t in raw]
 
     @staticmethod
     def _find_phone(texts: list[str]) -> Optional[str]:
-        """Ищет среди текстов кнопок тот, где написан номер."""
+        """Шукає серед текстів кнопок той, де написано номер"""
         for text in texts:
             digits = re.sub(r"\D", "", text)
             if PHONE_TEXT.match(text) and 9 <= len(digits) <= 13:
@@ -110,26 +110,26 @@ class AdPage:
         return None
 
     def _block_line(self) -> Optional[str]:
-        """Возвращает строку с сообщением антифрода, если она есть на странице."""
+        """Повертає рядок із повідомленням антифрода, якщо він є на сторінці."""
         for line in self.page.inner_text("body").split("\n"):
             if BLOCK_MESSAGE.search(line):
                 return line.strip()
         return None
 
     def get_phone(self) -> tuple[Optional[str], str]:
-        """Возвращает (номер или None, статус)."""
+        """Повертає (номер або None, статус)."""
         button = self.page.get_by_role("button", name=PHONE_BUTTON_NAME)
         try:
-            button.first.wait_for(timeout=4000)  # даём кнопке время появиться
+            button.first.wait_for(timeout=4000)
         except PlaywrightTimeout:
             return None, "no_button"
 
         if self.phone_blocked:
-            return None, "blocked"  # антифрод уже сработал: не нажимаем, не провоцируем
+            return None, "blocked"
 
         button.first.click()
 
-        # номер может появиться не сразу: проверяем до трёх раз
+        # номер може з'явитися не одразу: перевіряємо до трьох разів
         texts: list[str] = []
         for _ in range(3):
             self.page.wait_for_timeout(1500)

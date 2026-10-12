@@ -13,14 +13,13 @@ log = logging.getLogger(__name__)
 
 
 def pause() -> None:
-    """Случайная пауза, чтобы не долбить сайт запросами без перерыва."""
     time.sleep(random.uniform(*config.DELAY_RANGE_S))
 
 
 def collect_links(page: Page, target: int) -> list[str]:
-    """Листает страницы списка, пока не наберёт target уникальных ссылок."""
+    """Листає сторінки списку, доки не набере target унікальних посилань."""
     listing = ListingPage(page)
-    links: dict[str, None] = {}  # словарь вместо списка: нет дублей, порядок сохраняется
+    links: dict[str, None] = {}  # словник замість списку: немає дублів, порядок зберігається
     failures = 0
 
     for number in range(1, config.MAX_PAGES + 1):
@@ -52,7 +51,7 @@ def collect_links(page: Page, target: int) -> list[str]:
 
 
 def scrape_ad(ad_page: AdPage, url: str) -> AdData | None:
-    """Собирает одно объявление; при сбое повторяет с растущей паузой."""
+    """Збирає одне оголошення; при збої повторює зі зростаючою паузою."""
     for attempt in range(1, config.MAX_RETRIES + 1):
         try:
             return ad_page.collect(url)
@@ -65,7 +64,7 @@ def scrape_ad(ad_page: AdPage, url: str) -> AdData | None:
 
 
 def run(page: Page, target: int) -> tuple[Counter, list[str]]:
-    """Полный цикл: собрать ссылки, обойти объявления, записать в базу."""
+    """Повний цикл: зібрати посилання, обійти оголошення, записати в базу."""
     db.init_db()
     links = collect_links(page, target)
     log.info("Ссылок собрано: %s. Начинаю обход объявлений", len(links))
